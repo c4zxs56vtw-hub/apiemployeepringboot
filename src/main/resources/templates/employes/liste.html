@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Liste des employes</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}"/>
+</head>
+<body class="page-list">
+
+<div class="list-container">
+
+    <div class="list-header">
+        <h1>Gestion des employes</h1>
+        <a th:href="@{/employes/nouveau}" class="btn-action btn-primary-action">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                 stroke-width="2.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
+            </svg>
+            Nouvel employe
+        </a>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Prenom</th>
+                <th>Nom</th>
+                <th>Email</th>
+                <th>Poste</th>
+                <th>Salaire</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr th:each="emp : ${employes}">
+                <td th:text="${emp.id}">1</td>
+                <td th:text="${emp.prenom}">Prenom</td>
+                <td th:text="${emp.nom}">Nom</td>
+                <td th:text="${emp.email}">email@exemple.com</td>
+                <td th:text="${emp.poste}">Poste</td>
+                <td th:text="${#numbers.formatDecimal(emp.salaire, 1, 'COMMA', 0, 'POINT')} + ' EUR'">0</td>
+                <td class="actions-cell">
+                    <a th:href="@{/employes/{id}/editer(id=${emp.id})}"
+                       class="btn-action btn-edit-action">Modifier</a>
+                    <a th:href="@{/employes/{id}/supprimer(id=${emp.id})}"
+                       class="btn-action btn-delete-action"
+                       onclick="return confirm('Supprimer cet employe ?')">Supprimer</a>
+                </td>
+            </tr>
+            <tr th:if="${#lists.isEmpty(employes)}">
+                <td colspan="7" style="text-align:center;padding:28px;color:#6B7280;">
+                    Aucun employe enregistre.
+                </td>
+            </tr>
+        </tbody>
+    </table>
+
+    <p class="total-count">
+        Total : <strong th:text="${#lists.size(employes)}">0</strong> employe(s)
+    </p>
+</div>
+
+</body>
+</html>
