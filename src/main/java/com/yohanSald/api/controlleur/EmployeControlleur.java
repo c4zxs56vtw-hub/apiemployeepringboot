@@ -95,7 +95,6 @@ public class EmployeControlleur {
         return ResponseEntity.ok(employeService.findAllTriesParSalaire());
     }
 
-    // ── Statistiques ──
 
     // GET /api/employes/stats/salaires
     @GetMapping("/stats/salaires")

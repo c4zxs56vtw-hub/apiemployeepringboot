@@ -14,8 +14,10 @@ import java.util.Optional;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
+import static org.hamcrest.Matchers.containsString;
 
-@WebMvcTest(controllers = EmployeControlleur.class)
+@WebMvcTest(controllers = {EmployeControlleur.class, HomeController.class})
 class EmployeControlleurTest {
 
     @Autowired
@@ -30,6 +32,17 @@ class EmployeControlleurTest {
 
         mockMvc.perform(get("/api/employes"))
                 .andExpect(status().isOk());
+    }
+
+
+
+    @Test
+    public void testGetEmployees() throws Exception {
+        mockMvc.perform(get("/"))
+                .andDo(print())
+                .andExpect(status().isOk())
+                .andExpect(view().name("home"))
+                .andExpect(content().string(containsString("Laurent")));
     }
 
     @Test
