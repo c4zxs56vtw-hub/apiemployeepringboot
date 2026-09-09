@@ -75,14 +75,11 @@ public class EmployeControlleur {
     }
 
     // DELETE /api/employes/{id}
+    // Idempotent : retourne toujours 204, que l'employe existe ou non
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
-        return employeService.findById(id)
-                .map(existing -> {
-                    employeService.deleteById(id);
-                    return ResponseEntity.<Void>noContent().<Void>build();
-                })
-                .orElse(ResponseEntity.notFound().build());
+        employeService.findById(id).ifPresent(existing -> employeService.deleteById(id));
+        return ResponseEntity.noContent().build();
     }
 
     // ── Recherches ──

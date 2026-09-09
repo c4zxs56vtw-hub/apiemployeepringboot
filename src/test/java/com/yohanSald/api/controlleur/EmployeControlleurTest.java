@@ -71,6 +71,17 @@ class EmployeControlleurTest {
                 .andExpect(status().isNotFound());
     }
 
+    // ── Test idempotence : DELETE 2x -> toujours 204 ──
+    @Test
+    public void testDelete_idempotent_retourne204MemeIfAbsent() throws Exception {
+        // L'employe n'existe pas (deja supprime)
+        when(employeService.findById(99L)).thenReturn(Optional.empty());
+
+        // Premier appel ou appel sur ressource inexistante → 204 quand meme
+        mockMvc.perform(delete("/api/employes/99"))
+                .andExpect(status().isNoContent());
+    }
+
     // ── Test 5 : POST /api/employes -> 201 Created ──
     @Test
     public void testCreate_valide_retourne201() throws Exception {
