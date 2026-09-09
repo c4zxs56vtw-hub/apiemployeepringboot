@@ -28,7 +28,7 @@ class EmployeControlleurTest {
     @MockitoBean
     private EmployeService employeService;
 
-    // ── Test 1 : GET / -> vue home avec "Laurent" ──
+    // ── Test 1 : GET / → vue home avec "Laurent" ──
     @Test
     public void testGetHome_retourne200AvecLaurent() throws Exception {
         mockMvc.perform(get("/"))
@@ -38,51 +38,49 @@ class EmployeControlleurTest {
                 .andExpect(content().string(containsString("Laurent")));
     }
 
-    // ── Test 2 : GET /api/employes -> liste vide OK ──
+    // ── Test 2 : GET /api/v1/employes → 200 + JSON HATEOAS ──
     @Test
     public void testGetEmployes_retourne200() throws Exception {
         when(employeService.findAll()).thenReturn(List.of());
 
-        mockMvc.perform(get("/api/employes"))
+        mockMvc.perform(get("/api/v1/employes"))
                 .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON));
+                .andExpect(header().string("Cache-Control", containsString("max-age=60")));
     }
 
-    // ── Test 3 : GET /api/employes/1 -> employe trouve ──
+    // ── Test 3 : GET /api/v1/employes/1 → 200 + liens HATEOAS ──
     @Test
     public void testGetEmployeById_existant_retourne200() throws Exception {
         Employe employe = new Employe(1L, "Alice", "Martin", "alice@test.com", "Dev", 45000.0);
         when(employeService.findById(1L)).thenReturn(Optional.of(employe));
 
-        mockMvc.perform(get("/api/employes/1"))
+        mockMvc.perform(get("/api/v1/employes/1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.prenom").value("Alice"))
-                .andExpect(jsonPath("$.nom").value("Martin"))
-                .andExpect(jsonPath("$.email").value("alice@test.com"))
-                .andExpect(jsonPath("$.salaire").doesNotExist());
+                .andExpect(jsonPath("$.salaire").doesNotExist())
+                .andExpect(jsonPath("$._links.self.href").exists())
+                .andExpect(jsonPath("$._links.employes.href").exists());
     }
 
-    // ── Test 4 : GET /api/employes/99 -> 404 ──
+    // ── Test 4 : GET /api/v1/employes/99 → 404 ──
     @Test
     public void testGetEmployeById_inexistant_retourne404() throws Exception {
         when(employeService.findById(99L)).thenReturn(Optional.empty());
 
-        mockMvc.perform(get("/api/employes/99"))
+        mockMvc.perform(get("/api/v1/employes/99"))
                 .andExpect(status().isNotFound());
     }
 
-    // ── Test idempotence : DELETE 2x -> toujours 204 ──
+    // ── Test 5 : DELETE idempotent → 204 meme si absent ──
     @Test
     public void testDelete_idempotent_retourne204MemeIfAbsent() throws Exception {
-        // L'employe n'existe pas (deja supprime)
         when(employeService.findById(99L)).thenReturn(Optional.empty());
 
-        // Premier appel ou appel sur ressource inexistante → 204 quand meme
-        mockMvc.perform(delete("/api/employes/99"))
+        mockMvc.perform(delete("/api/v1/employes/99"))
                 .andExpect(status().isNoContent());
     }
 
-    // ── Test 5 : POST /api/employes -> 201 Created ──
+    // ── Test 6 : POST valide → 201 Created ──
     @Test
     public void testCreate_valide_retourne201() throws Exception {
         Employe saved = new Employe(1L, "Bob", "Dupont", "bob@test.com", "DevOps", 50000.0);
@@ -99,17 +97,18 @@ class EmployeControlleurTest {
                 }
                 """;
 
-        mockMvc.perform(post("/api/employes")
+        mockMvc.perform(post("/api/v1/employes")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.prenom").value("Bob"))
-                .andExpect(jsonPath("$.salaire").doesNotExist());
+                .andExpect(jsonPath("$.salaire").doesNotExist())
+                .andExpect(jsonPath("$._links.self.href").exists());
     }
 
-    // ── Test 6 : POST avec email invalide -> 400 ──
+    // ── Test 7 : POST email invalide → 400 + corps d erreur structure ──
     @Test
-    public void testCreate_emailInvalide_retourne400() throws Exception {
+    public void testCreate_emailInvalide_retourne400Structure() throws Exception {
         String json = """
                 {
                   "prenom": "Bob",
@@ -119,13 +118,16 @@ class EmployeControlleurTest {
                 }
                 """;
 
-        mockMvc.perform(post("/api/employes")
+        mockMvc.perform(post("/api/v1/employes")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.erreur").value("Erreur de validation"))
+                .andExpect(jsonPath("$.details.email").exists());
     }
 
-    // ── Test 7 : POST email deja utilise -> 400 ──
+    // ── Test 8 : POST email deja utilise → 400 ──
     @Test
     public void testCreate_emailDejaUtilise_retourne400() throws Exception {
         when(employeService.emailDejaUtilise("alice@test.com")).thenReturn(true);
@@ -139,7 +141,7 @@ class EmployeControlleurTest {
                 }
                 """;
 
-        mockMvc.perform(post("/api/employes")
+        mockMvc.perform(post("/api/v1/employes")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
                 .andExpect(status().isBadRequest());

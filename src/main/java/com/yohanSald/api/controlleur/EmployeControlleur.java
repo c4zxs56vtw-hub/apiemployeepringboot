@@ -6,6 +6,10 @@ import com.yohanSald.api.mapper.EmployeMapper;
 import com.yohanSald.api.model.Employe;
 import com.yohanSald.api.service.EmployeService;
 import jakarta.validation.Valid;
+import org.springframework.hateoas.CollectionModel;
+import org.springframework.hateoas.EntityModel;
+import org.springframework.hateoas.Link;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
@@ -13,9 +17,13 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+
+import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.*;
 
 @RestController
-@RequestMapping("/api/employes")
+@RequestMapping("/api/v1/employes")
 public class EmployeControlleur {
 
     private final EmployeService employeService;
@@ -24,119 +32,132 @@ public class EmployeControlleur {
         this.employeService = employeService;
     }
 
-    // ── CRUD de base ──
-
-    // GET /api/employes
-    @GetMapping
-    public ResponseEntity<List<EmployeResponseDTO>> findAll() {
-        List<EmployeResponseDTO> dtos = employeService.findAll()
-                .stream()
-                .map(EmployeMapper::toResponseDTO)
-                .toList();
-        return ResponseEntity.ok(dtos);
+    // ── Methode utilitaire : construit un EntityModel avec liens HATEOAS ──
+    private EntityModel<EmployeResponseDTO> toModel(Employe employe) {
+        EmployeResponseDTO dto = EmployeMapper.toResponseDTO(employe);
+        return EntityModel.of(dto,
+                linkTo(methodOn(EmployeControlleur.class).findById(employe.getId())).withSelfRel(),
+                linkTo(methodOn(EmployeControlleur.class).findAll()).withRel("employes"),
+                Link.of("/api/v1/employes/" + employe.getId(), "modifier").withType("PUT"),
+                Link.of("/api/v1/employes/" + employe.getId(), "supprimer").withType("DELETE")
+        );
     }
 
-    // GET /api/employes/{id}
+    // ── CRUD de base ──
+
+    // GET /api/v1/employes
+    @GetMapping
+    public ResponseEntity<CollectionModel<EntityModel<EmployeResponseDTO>>> findAll() {
+        List<EntityModel<EmployeResponseDTO>> models = employeService.findAll()
+                .stream()
+                .map(this::toModel)
+                .collect(Collectors.toList());
+
+        CollectionModel<EntityModel<EmployeResponseDTO>> collection = CollectionModel.of(
+                models,
+                linkTo(methodOn(EmployeControlleur.class).findAll()).withSelfRel()
+        );
+
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(60, TimeUnit.SECONDS).cachePublic())
+                .body(collection);
+    }
+
+    // GET /api/v1/employes/{id}
     @GetMapping("/{id}")
-    public ResponseEntity<EmployeResponseDTO> findById(@PathVariable Long id) {
+    public ResponseEntity<EntityModel<EmployeResponseDTO>> findById(@PathVariable Long id) {
         return employeService.findById(id)
-                .map(EmployeMapper::toResponseDTO)
-                .map(ResponseEntity::ok)
+                .map(employe -> ResponseEntity.ok()
+                        .cacheControl(CacheControl.maxAge(60, TimeUnit.SECONDS).cachePublic())
+                        .body(toModel(employe)))
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // POST /api/employes
+    // POST /api/v1/employes
     @PostMapping
-    public ResponseEntity<EmployeResponseDTO> create(@RequestBody @Valid EmployeRequestDTO dto) {
+    public ResponseEntity<EntityModel<EmployeResponseDTO>> create(
+            @RequestBody @Valid EmployeRequestDTO dto) {
         if (employeService.emailDejaUtilise(dto.getEmail())) {
             return ResponseEntity.badRequest().build();
         }
-        Employe employe = EmployeMapper.toEntity(dto);
-        Employe saved = employeService.save(employe);
+        Employe saved = employeService.save(EmployeMapper.toEntity(dto));
         URI location = ServletUriComponentsBuilder
                 .fromCurrentRequest().path("/{id}")
                 .buildAndExpand(saved.getId()).toUri();
-        return ResponseEntity.created(location).body(EmployeMapper.toResponseDTO(saved));
+        return ResponseEntity.created(location).body(toModel(saved));
     }
 
-    // PUT /api/employes/{id}
+    // PUT /api/v1/employes/{id}
     @PutMapping("/{id}")
-    public ResponseEntity<EmployeResponseDTO> update(
+    public ResponseEntity<EntityModel<EmployeResponseDTO>> update(
             @PathVariable Long id,
             @RequestBody @Valid EmployeRequestDTO dto) {
         return employeService.findById(id)
                 .map(existing -> {
                     Employe employe = EmployeMapper.toEntity(dto);
                     employe.setId(id);
-                    Employe updated = employeService.save(employe);
-                    return ResponseEntity.ok(EmployeMapper.toResponseDTO(updated));
+                    return ResponseEntity.ok(toModel(employeService.save(employe)));
                 })
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // DELETE /api/employes/{id}
-    // Idempotent : retourne toujours 204, que l'employe existe ou non
+    // DELETE /api/v1/employes/{id} — Idempotent
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
-        employeService.findById(id).ifPresent(existing -> employeService.deleteById(id));
+        employeService.findById(id).ifPresent(e -> employeService.deleteById(id));
         return ResponseEntity.noContent().build();
     }
 
     // ── Recherches ──
 
-    // GET /api/employes/recherche?mot=alice
     @GetMapping("/recherche")
-    public ResponseEntity<List<EmployeResponseDTO>> rechercherGlobal(@RequestParam String mot) {
-        List<EmployeResponseDTO> dtos = employeService.rechercherGlobal(mot)
-                .stream()
-                .map(EmployeMapper::toResponseDTO)
-                .toList();
-        return ResponseEntity.ok(dtos);
+    public ResponseEntity<CollectionModel<EntityModel<EmployeResponseDTO>>> rechercherGlobal(
+            @RequestParam String mot) {
+        List<EntityModel<EmployeResponseDTO>> models = employeService.rechercherGlobal(mot)
+                .stream().map(this::toModel).collect(Collectors.toList());
+        return ResponseEntity.ok(CollectionModel.of(models,
+                linkTo(methodOn(EmployeControlleur.class).rechercherGlobal(mot)).withSelfRel()));
     }
 
-    // GET /api/employes/poste?nom=Developpeur
     @GetMapping("/poste")
-    public ResponseEntity<List<EmployeResponseDTO>> findByPoste(@RequestParam String nom) {
-        List<EmployeResponseDTO> dtos = employeService.findByPoste(nom)
-                .stream()
-                .map(EmployeMapper::toResponseDTO)
-                .toList();
-        return ResponseEntity.ok(dtos);
+    public ResponseEntity<CollectionModel<EntityModel<EmployeResponseDTO>>> findByPoste(
+            @RequestParam String nom) {
+        List<EntityModel<EmployeResponseDTO>> models = employeService.findByPoste(nom)
+                .stream().map(this::toModel).collect(Collectors.toList());
+        return ResponseEntity.ok(CollectionModel.of(models,
+                linkTo(methodOn(EmployeControlleur.class).findByPoste(nom)).withSelfRel()));
     }
 
-    // GET /api/employes/salaire?min=40000&max=60000
     @GetMapping("/salaire")
-    public ResponseEntity<List<EmployeResponseDTO>> findBySalaire(
-            @RequestParam Double min,
-            @RequestParam Double max) {
-        List<EmployeResponseDTO> dtos = employeService.findBySalaireBetween(min, max)
-                .stream()
-                .map(EmployeMapper::toResponseDTO)
-                .toList();
-        return ResponseEntity.ok(dtos);
+    public ResponseEntity<CollectionModel<EntityModel<EmployeResponseDTO>>> findBySalaire(
+            @RequestParam Double min, @RequestParam Double max) {
+        List<EntityModel<EmployeResponseDTO>> models = employeService.findBySalaireBetween(min, max)
+                .stream().map(this::toModel).collect(Collectors.toList());
+        return ResponseEntity.ok(CollectionModel.of(models,
+                linkTo(methodOn(EmployeControlleur.class).findBySalaire(min, max)).withSelfRel()));
     }
 
-    // GET /api/employes/tries
     @GetMapping("/tries")
-    public ResponseEntity<List<EmployeResponseDTO>> findTriesParSalaire() {
-        List<EmployeResponseDTO> dtos = employeService.findAllTriesParSalaire()
-                .stream()
-                .map(EmployeMapper::toResponseDTO)
-                .toList();
-        return ResponseEntity.ok(dtos);
+    public ResponseEntity<CollectionModel<EntityModel<EmployeResponseDTO>>> findTriesParSalaire() {
+        List<EntityModel<EmployeResponseDTO>> models = employeService.findAllTriesParSalaire()
+                .stream().map(this::toModel).collect(Collectors.toList());
+        return ResponseEntity.ok(CollectionModel.of(models,
+                linkTo(methodOn(EmployeControlleur.class).findTriesParSalaire()).withSelfRel()));
     }
 
     // ── Statistiques ──
 
-    // GET /api/employes/stats/salaires
     @GetMapping("/stats/salaires")
     public ResponseEntity<Map<String, Double>> salaireMoyenParPoste() {
-        return ResponseEntity.ok(employeService.salaireMoyenParPoste());
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(300, TimeUnit.SECONDS).cachePublic())
+                .body(employeService.salaireMoyenParPoste());
     }
 
-    // GET /api/employes/stats/effectifs
     @GetMapping("/stats/effectifs")
     public ResponseEntity<Map<String, Long>> countParPoste() {
-        return ResponseEntity.ok(employeService.countParPoste());
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(300, TimeUnit.SECONDS).cachePublic())
+                .body(employeService.countParPoste());
     }
 }
