@@ -28,6 +28,7 @@
     <!-- Formulaire -->
     <form th:action="@{/employes/sauvegarder}" th:object="${employe}"
           method="post" id="employeForm" novalidate>
+        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
         <input type="hidden" th:field="*{id}"/>
 
         <div class="form-grid">
